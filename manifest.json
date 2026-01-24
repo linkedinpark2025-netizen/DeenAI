@@ -1,0 +1,15 @@
+{
+  "name": "DeenAI",
+  "short_name": "DeenAI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#001a0f",
+  "theme_color": "#d4af37",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2942/2942944.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
