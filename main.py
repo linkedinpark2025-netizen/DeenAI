@@ -9,355 +9,220 @@ from streamlit_mic_recorder import mic_recorder
 if 'messages' not in st.session_state: st.session_state.messages = []
 if 'page' not in st.session_state: st.session_state.page = "Home"
 if 'user_city' not in st.session_state: st.session_state.user_city = "London"
+if 'bookmarks' not in st.session_state: st.session_state.bookmarks = []
 
 G_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=G_KEY)
 
 # ==========================================
-# 2. THE DESIGN ENGINE (CSS)
+# 2. DESIGN ENGINE (CSS)
 # ==========================================
 st.set_page_config(page_title="DEEN AI", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
-    <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        /* Main App Container */
-        .stApp {
-            background-color: #F7F7FB;
-            color: #333333;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-                         "SF Pro Display", "Roboto", sans-serif;
-        }
-        [data-testid="stHeader"], [data-testid="stSidebar"] {
-            display: none;
-        }
-        .block-container {
-            padding-top: 0rem;
-            padding-bottom: 6rem;
-            padding-left: 0;
-            padding-right: 0;
-            max-width: 480px;      /* mimic mobile width */
-        }
+        .stApp { background-color: #F7F7FB; color: #333333; font-family: sans-serif; }
+        [data-testid="stHeader"], [data-testid="stSidebar"] { display: none; }
+        .block-container { padding-top: 0rem; padding-bottom: 6rem; max-width: 480px; margin: auto; }
 
-        /* Top Header Panel */
+        /* Navigation Styling */
         .top-header {
-            background-color: #1B3243;   /* deep blue/teal like screenshot */
-            padding: 32px 24px 70px 24px;
-            border-bottom-left-radius: 28px;
-            border-bottom-right-radius: 28px;
-            color: #FFFFFF;
-            position: relative;
+            background-color: #1B3243; padding: 32px 24px 70px 24px;
+            border-bottom-left-radius: 28px; border-bottom-right-radius: 28px;
+            color: #FFFFFF; position: relative;
         }
-        .header-content {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-section {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-        .logo-circle {
-            width: 52px;
-            height: 52px;
-            background: #0E202C;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #F9C663;
-            font-size: 20px;
-        }
-        .welcome-text b {
-            font-size: 22px;
-            display: block;
-            margin-bottom: 2px;
-        }
-        .welcome-text span {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        /* Search Bar */
         .search-container {
-            position: absolute;
-            left: 50%;
-            bottom: -26px;
-            transform: translateX(-50%);
-            width: calc(100% - 48px);
-            background: #FFFFFF;
-            padding: 12px 18px;
-            border-radius: 22px;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.10);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+            width: calc(100% - 48px); background: #FFFFFF; padding: 12px 18px;
+            border-radius: 22px; box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+            display: flex; justify-content: space-between; align-items: center;
         }
-        .search-placeholder {
-            color: #B0B5C0;
-            font-size: 14px;
-        }
-        .search-icon {
-            color: #7E57C2;
-            font-size: 18px;
-        }
-
-        /* Section Titles */
-        .section-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 40px 24px 12px 24px;
-        }
-        .section-title {
-            color: #2E3135;
-            font-weight: 600;
-            font-size: 18px;
-        }
-        .show-all {
-            color: #7E828E;
-            font-size: 14px;
-        }
-
-        /* Category Grid */
-        .category-grid-wrapper {
-            padding: 0 24px;
-        }
+        
+        /* Cards */
         .cat-card {
-            background: #FFFFFF;
-            padding: 22px 10px 18px 10px;
-            border-radius: 20px;
-            text-align: center;
-            box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+            background: #FFFFFF; padding: 22px 10px; border-radius: 20px;
+            text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+            cursor: pointer;
         }
-        .cat-icon {
-            font-size: 26px;
-            color: #1B3243;
-            margin-bottom: 10px;
-            display: block;
-        }
-        .cat-label {
-            font-size: 13px;
-            color: #3A3D43;
-            font-weight: 500;
-        }
+        .cat-icon { font-size: 26px; color: #1B3243; margin-bottom: 10px; }
+        .cat-label { font-size: 13px; color: #3A3D43; font-weight: 500; }
 
-        /* Verse Section Title */
-        .verse-section-row {
-            padding: 26px 24px 12px 24px;
-        }
-
-        /* Verse of the Day Card */
-        .verse-card-main {
-            background: #FFFFFF;
-            margin: 0 24px;
-            padding: 22px 20px;
-            border-radius: 22px;
-            box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .arabic-badge {
-            background: #F5E1D5;
-            color: #7B4A2A;
-            padding: 18px;
-            border-radius: 999px;
-            font-size: 18px;
-            min-width: 64px;
-            text-align: center;
-        }
-        .star-icon {
-            color: #FFC107;
-            font-size: 20px;
-        }
-        .verse-text-wrapper {
-            flex: 1;
-        }
-        .verse-line {
-            font-size: 20px;
-            color: #2E3135;
-            line-height: 1.3;
-        }
-
-        /* Bottom Nav Bar */
+        /* Bottom Nav */
         .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            max-width: 480px;
-            width: 100%;
-            background: #1B3243;
-            display: flex;
-            justify-content: space-around;
-            padding: 10px 0 12px 0;
-            border-top-left-radius: 22px;
-            border-top-right-radius: 22px;
-            z-index: 999;
+            position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+            max-width: 480px; width: 100%; background: #1B3243;
+            display: flex; justify-content: space-around; padding: 10px 0;
+            border-top-left-radius: 22px; border-top-right-radius: 22px; z-index: 999;
         }
-        .nav-item {
-            text-align: center;
-            color: #FFFFFF;
-            opacity: 0.7;
-            font-size: 11px;
+        .nav-btn { background: none; border: none; color: white; opacity: 0.7; font-size: 11px; text-align: center; }
+        .nav-btn.active { opacity: 1; font-weight: bold; }
+
+        /* Verse Card */
+        .verse-card-main {
+            background: #FFFFFF; margin: 0 24px; padding: 20px;
+            border-radius: 22px; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+            display: flex; align-items: center; gap: 16px;
         }
-        .nav-item.active {
-            opacity: 1;
-            font-weight: 600;
-        }
-        .nav-item i {
-            font-size: 22px;
-            display: block;
-            margin-bottom: 4px;
-        }
+        .arabic-badge { background: #F5E1D5; color: #7B4A2A; padding: 15px; border-radius: 50%; font-size: 18px; }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. COMPONENTS
+# 3. UTILITIES & API LOGIC
 # ==========================================
 
-def render_header():
-    st.markdown("""
+def get_prayer_times(city):
+    try:
+        r = requests.get(f"https://api.aladhan.com/v1/timingsByCity?city={city}&country=").json()
+        return r['data']['timings']
+    except: return None
+
+def speak(text):
+    tts = gTTS(text=text[:500], lang='en')
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    return fp.getvalue()
+
+def get_quran_verse():
+    # Placeholder for Daily Verse (Surah 94:6)
+    return {"ar": "فَإِنَّ مَعَ الْعُسْرِ يُسْرًا", "en": "Indeed, with hardship comes ease."}
+
+# ==========================================
+# 4. PAGE RENDERING FUNCTIONS
+# ==========================================
+
+def change_page(name):
+    st.session_state.page = name
+    st.rerun()
+
+def render_top_header():
+    st.markdown(f"""
     <div class="top-header">
-        <div class="header-content">
-            <div class="logo-section">
-                <div class="logo-circle">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width:52px; height:52px; background:#0E202C; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#F9C663;">
                     <i class="fa-solid fa-mosque"></i>
                 </div>
-                <div class="welcome-text">
-                    <b>Welcome</b>
-                    <span>to DEEN AI</span>
-                </div>
-            </div>
-            <div class="logo-circle" style="width:44px; height:44px; background:#0E202C; opacity:0.9;">
-                <i class="fa-solid fa-star-and-crescent"></i>
+                <div><b>Welcome</b><br><span style="font-size:14px; opacity:0.9;">to DEEN AI</span></div>
             </div>
         </div>
         <div class="search-container">
-            <span class="search-placeholder">Ask any question?</span>
-            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <span style="color:#B0B5C0; font-size:14px;">Ask any question?</span>
+            <i class="fa-solid fa-magnifying-glass" style="color:#7E57C2;"></i>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-def render_nav():
-    st.markdown("""
-    <div class="bottom-nav">
-        <div class="nav-item active">
-            <i class="fa-solid fa-house"></i>
-            Home
+def render_bottom_nav():
+    cols = st.columns(4)
+    with cols[0]:
+        if st.button("🏠\nHome", key="nav_home"): change_page("Home")
+    with cols[1]:
+        if st.button("🎤\nAI", key="nav_ai"): change_page("Talk to AI")
+    with cols[2]:
+        if st.button("🕌\nPray", key="nav_pray"): change_page("Prayer times")
+    with cols[3]:
+        if st.button("📞\nSupport", key="nav_supp"): change_page("Support")
+
+# ==========================================
+# 5. PAGES
+# ==========================================
+
+# --- HOME PAGE ---
+if st.session_state.page == "Home":
+    render_top_header()
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    st.write("### Categories")
+    c1, c2, c3 = st.columns(3)
+    with c1: 
+        if st.button("👥\nTalk to AI"): change_page("Talk to AI")
+    with c2: 
+        if st.button("⏰\nPrayer Time"): change_page("Prayer times")
+    with c3: 
+        if st.button("📚\nHadith"): change_page("Hadith Search")
+        
+    c4, c5, c6 = st.columns(3)
+    with c4: 
+        if st.button("📖\nQuran"): change_page("Quran Reader")
+    with c5: 
+        if st.button("⭐\nSaved"): change_page("Saved Knowledge")
+    with c6: 
+        if st.button("🔗\nVerse"): change_page("Home")
+
+    st.write("### Verse of the day")
+    v = get_quran_verse()
+    st.markdown(f"""
+        <div class="verse-card-main">
+            <div class="arabic-badge">﷽</div>
+            <div>
+                <div style="font-size:18px; font-weight:bold; direction:rtl;">{v['ar']}</div>
+                <div style="font-size:14px; color:#555;">{v['en']}</div>
+            </div>
         </div>
-        <div class="nav-item">
-            <i class="fa-solid fa-stethoscope"></i>
-            Talk to AI
-        </div>
-        <div class="nav-item">
-            <i class="fa-solid fa-calendar-days"></i>
-            Prayer times
-        </div>
-        <div class="nav-item">
-            <i class="fa-solid fa-circle-user"></i>
-            Support
-        </div>
-    </div>
     """, unsafe_allow_html=True)
 
-# ==========================================
-# 4. MAIN LAYOUT
-# ==========================================
+# --- TALK TO AI ---
+elif st.session_state.page == "Talk to AI":
+    st.button("← Back", on_click=change_page, args=("Home",))
+    st.title("🎤 Talk to AI")
+    
+    audio = mic_recorder(start_prompt="Tap to Record", stop_prompt="Stop", just_once=True, key='recorder')
+    
+    if audio:
+        st.success("Transcribing voice...")
+        # (In a full app, you'd send audio to Groq Whisper here)
+        # For now, we simulate the text input:
+        user_text = "What is the importance of Salah?" 
+        st.session_state.messages.append({"role": "user", "content": user_text})
+        
+        res = client.chat.completions.create(
+            messages=[{"role": "system", "content": "Concise Islamic assistant."}] + st.session_state.messages,
+            model="llama-3.3-70b-versatile"
+        ).choices[0].message.content
+        
+        st.write(f"**DeenAI:** {res}")
+        st.audio(speak(res), format="audio/mp3", autoplay=True)
 
-render_header()
+# --- PRAYER TIMES ---
+elif st.session_state.page == "Prayer times":
+    st.button("← Back", on_click=change_page, args=("Home",))
+    st.title("📍 Prayer Times")
+    pt = get_prayer_times(st.session_state.user_city)
+    if pt:
+        for p, t in pt.items():
+            if p in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
+                st.write(f"**{p}:** {t}")
 
-# Categories Section title row
-st.markdown("""
-    <div class="section-row">
-        <span class="section-title">Categories</span>
-        <span class="show-all">Show All</span>
-    </div>
-""", unsafe_allow_html=True)
+# --- HADITH SEARCH ---
+elif st.session_state.page == "Hadith Search":
+    st.button("← Back", on_click=change_page, args=("Home",))
+    st.title("📜 Hadith Search")
+    query = st.text_input("Search for a topic (e.g. Patience)")
+    if query:
+        res = client.chat.completions.create(
+            messages=[{"role": "system", "content": "Provide Sahih Bukhari or Muslim only."},{"role":"user","content":query}],
+            model="llama-3.3-70b-versatile"
+        ).choices[0].message.content
+        st.info(res)
 
-# Category grid (2 x 3)
-st.markdown('<div class="category-grid-wrapper">', unsafe_allow_html=True)
-row1 = st.columns(3)
-with row1[0]:
-    st.markdown(
-        '<div class="cat-card">'
-        '<i class="fa-solid fa-user-group cat-icon"></i>'
-        '<div class="cat-label">Talk to AI</div>'
-        '</div>', unsafe_allow_html=True)
-with row1[1]:
-    st.markdown(
-        '<div class="cat-card">'
-        '<i class="fa-solid fa-clock cat-icon"></i>'
-        '<div class="cat-label">Prayer time</div>'
-        '</div>', unsafe_allow_html=True)
-with row1[2]:
-    st.markdown(
-        '<div class="cat-card">'
-        '<i class="fa-solid fa-file-lines cat-icon"></i>'
-        '<div class="cat-label">Hadith Search</div>'
-        '</div>', unsafe_allow_html=True)
+# --- QURAN READER ---
+elif st.session_state.page == "Quran Reader":
+    st.button("← Back", on_click=change_page, args=("Home",))
+    st.title("📖 Quran Reader")
+    st.write("Surah Al-Fatiha")
+    st.audio("https://server8.mp3quran.net/afs/001.mp3")
+    st.markdown("<div style='direction:rtl; font-size:24px;'>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>", unsafe_allow_html=True)
 
-st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
+# --- SUPPORT ---
+elif st.session_state.page == "Support":
+    st.button("← Back", on_click=change_page, args=("Home",))
+    st.title("🤝 Support Us")
+    st.write("Please share the app with friends and family via this link:")
+    st.code("https://deenai.streamlit.app")
 
-row2 = st.columns(3)
-with row2[0]:
-    st.markdown(
-        '<div class="cat-card">'
-        '<i class="fa-solid fa-circle-notch cat-icon"></i>'
-        '<div class="cat-label">Quran Reader</div>'
-        '</div>', unsafe_allow_html=True)
-with row2[1]:
-    st.markdown(
-        '<div class="cat-card">'
-        '<i class="fa-solid fa-bookmark cat-icon"></i>'
-        '<div class="cat-label">Saved Knowlege</div>'
-        '</div>', unsafe_allow_html=True)
-with row2[2]:
-    st.markdown(
-        '<div class="cat-card">'
-        '<i class="fa-solid fa-hexagon-nodes-bolt cat-icon"></i>'
-        '<div class="cat-label">Verse of the day</div>'
-        '</div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Verse of the day section
-st.markdown(
-    '<div class="verse-section-row">'
-    '<span class="section-title">Verse of the day</span>'
-    '</div>', unsafe_allow_html=True)
-
-# Verse card – no Loren Ipsum text, just placeholders you can fill
-st.markdown("""
-    <div class="verse-card-main">
-        <div class="arabic-badge">﷽</div>
-        <i class="fa-solid fa-star star-icon"></i>
-        <div class="verse-text-wrapper">
-            <div class="verse-line">Verse line one</div>
-            <div class="verse-line">Verse line two</div>
-            <div class="verse-line">Verse line three</div>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
-# Optional: chat functionality section under the card
-st.markdown('<div style="padding: 24px 24px 80px 24px;"><hr></div>',
-            unsafe_allow_html=True)
-
-prompt = st.chat_input("Ask any question?")
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    res = client.chat.completions.create(
-        messages=[{"role": "system",
-                   "content": "Concise Islamic scholar assistant."}]
-                 + st.session_state.messages,
-        model="llama-3.3-70b-versatile"
-    ).choices[0].message.content
-    st.info(res)
-
-render_nav()
+# FOOTER NAVIGATION (Always visible)
+st.markdown("<br><br><br>", unsafe_allow_html=True)
+render_bottom_nav()
 
