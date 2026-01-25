@@ -16,11 +16,18 @@ G_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=G_KEY)
 
 # ==========================================
-# 2. MOBILE-FIRST PREMIUM CSS
+# 2. MOBILE-FIRST PREMIUM CSS & PWA TAGS
 # ==========================================
 st.set_page_config(page_title="DeenAI", layout="wide", page_icon="🕌", initial_sidebar_state="collapsed")
 
 st.markdown("""
+    <link rel="manifest" href="manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js');
+      }
+    </script>
+    
     <style>
         .stApp { background: linear-gradient(135deg, #001a0f 0%, #002b24 100%); color: #d4af37; }
         [data-testid="stSidebar"] { display: none; }
@@ -139,11 +146,9 @@ elif st.session_state.h_text == "init":
 
 # MODE 3: DASHBOARD & CHAT
 else:
-    # SAFETY FIX FOR VERSE OF DAY
     dv_list = get_data(2, 255) 
     if dv_list and dv_list[0]:
         dv = dv_list[0]
-        # Check if translations exist before accessing index 0
         raw_trans = dv.get('translations', [{}])[0].get('text', 'Translation loading...')
         clean_trans = re.sub('<[^<]+?>', '', raw_trans)
         
