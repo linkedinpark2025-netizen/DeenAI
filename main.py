@@ -1,4 +1,4 @@
-import os, requests, re, streamlit as st, datetime, io
+import os, requests, re, streamlit as st, random, datetime, io
 from groq import Groq
 from gtts import gTTS 
 from streamlit_mic_recorder import mic_recorder
@@ -7,222 +7,219 @@ from streamlit_mic_recorder import mic_recorder
 # 1. INITIALIZATION & SESSION STATE
 # ==========================================
 if 'messages' not in st.session_state: st.session_state.messages = []
-if 'page' not in st.session_state: st.session_state.page = "Home"
+if 'v_list' not in st.session_state: st.session_state.v_list = None
+if 'h_text' not in st.session_state: st.session_state.h_text = None
 if 'user_city' not in st.session_state: st.session_state.user_city = "London"
-if 'bookmarks' not in st.session_state: st.session_state.bookmarks = []
 
+# Corrected for Streamlit Cloud Deployment
 G_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=G_KEY)
 
 # ==========================================
-# 2. DESIGN ENGINE (CSS)
+# 2. MOBILE-FIRST PREMIUM CSS
 # ==========================================
-st.set_page_config(page_title="DEEN AI", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="DeenAI", layout="wide", page_icon="🕌", initial_sidebar_state="collapsed")
 
 st.markdown("""
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
-        .stApp { background-color: #F7F7FB; color: #333333; font-family: sans-serif; }
-        [data-testid="stHeader"], [data-testid="stSidebar"] { display: none; }
-        .block-container { padding-top: 0rem; padding-bottom: 6rem; max-width: 480px; margin: auto; }
-
-        /* Navigation Styling */
-        .top-header {
-            background-color: #1B3243; padding: 32px 24px 70px 24px;
-            border-bottom-left-radius: 28px; border-bottom-right-radius: 28px;
-            color: #FFFFFF; position: relative;
-        }
-        .search-container {
-            position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
-            width: calc(100% - 48px); background: #FFFFFF; padding: 12px 18px;
-            border-radius: 22px; box-shadow: 0 6px 16px rgba(0,0,0,0.1);
-            display: flex; justify-content: space-between; align-items: center;
-        }
+        /* Force background and hide Streamlit UI elements */
+        .stApp { background: linear-gradient(135deg, #001a0f 0%, #002b24 100%); color: #d4af37; }
+        [data-testid="stSidebar"] { display: none; }
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
         
-        /* Cards */
-        .cat-card {
-            background: #FFFFFF; padding: 22px 10px; border-radius: 20px;
-            text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-            cursor: pointer;
+        /* Mobile text optimizations */
+        @media (max-width: 640px) {
+            .arabic-txt { font-size: 26px !important; }
+            .hero-box { padding: 15px !important; }
+            .stButton > button { height: 55px !important; font-size: 14px !important; }
         }
-        .cat-icon { font-size: 26px; color: #1B3243; margin-bottom: 10px; }
-        .cat-label { font-size: 13px; color: #3A3D43; font-weight: 500; }
 
-        /* Bottom Nav */
-        .bottom-nav {
-            position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
-            max-width: 480px; width: 100%; background: #1B3243;
-            display: flex; justify-content: space-around; padding: 10px 0;
-            border-top-left-radius: 22px; border-top-right-radius: 22px; z-index: 999;
+        .hero-box {
+            background: rgba(0,77,64,0.3);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            margin-bottom: 20px;
+            text-align: center;
         }
-        .nav-btn { background: none; border: none; color: white; opacity: 0.7; font-size: 11px; text-align: center; }
-        .nav-btn.active { opacity: 1; font-weight: bold; }
-
-        /* Verse Card */
-        .verse-card-main {
-            background: #FFFFFF; margin: 0 24px; padding: 20px;
-            border-radius: 22px; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-            display: flex; align-items: center; gap: 16px;
+        .stButton > button {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(212, 175, 55, 0.3) !important;
+            color: #d4af37 !important;
+            border-radius: 12px !important;
+            height: 60px !important;
+            width: 100%;
+            font-weight: bold !important;
+            transition: 0.3s;
         }
-        .arabic-badge { background: #F5E1D5; color: #7B4A2A; padding: 15px; border-radius: 50%; font-size: 18px; }
+        .stButton > button:hover { border-color: #d4af37 !important; background: rgba(212, 175, 55, 0.1) !important; }
+        
+        .arabic-txt { font-size: 34px; color: #ffffff; text-align: center; direction: rtl; font-family: 'serif'; line-height: 1.8; }
+        .trans-txt { color: #d4af37; font-size: 14px; margin-top: 10px; border-top: 1px solid rgba(212,175,55,0.1); padding-top: 8px; }
+        .verse-card { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid #d4af37; }
+        .prayer-time-box { text-align:center; padding:10px; border:1px solid rgba(212,175,55,0.2); margin-bottom:10px; border-radius:12px; background: rgba(0,0,0,0.3); }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. UTILITIES & API LOGIC
+# 3. UTILITIES
 # ==========================================
-
-def get_prayer_times(city):
+def get_location():
     try:
-        r = requests.get(f"https://api.aladhan.com/v1/timingsByCity?city={city}&country=").json()
-        return r['data']['timings']
+        res = requests.get("https://ipapi.co/json/", timeout=5).json()
+        return res.get("city", "London")
+    except: return "London"
+
+def get_prayer_times(city_name):
+    try:
+        url = f"https://api.aladhan.com/v1/timingsByCity?city={city_name}&country="
+        r = requests.get(url, timeout=10).json()
+        return r['data']['timings'] if r['code'] == 200 else None
     except: return None
 
-def speak(text):
-    tts = gTTS(text=text[:500], lang='en')
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    return fp.getvalue()
+def speak_gtts(text):
+    try:
+        clean_text = re.sub(r'[*_#]', '', text)
+        tts = gTTS(text=clean_text[:1000], lang='en')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except: return None
 
-def get_quran_verse():
-    # Placeholder for Daily Verse (Surah 94:6)
-    return {"ar": "فَإِنَّ مَعَ الْعُسْرِ يُسْرًا", "en": "Indeed, with hardship comes ease."}
+def get_data(s_id, a_id=None):
+    target_translations = "131,20" 
+    u = f"https://api.quran.com/api/v4/verses/by_key/{s_id}:{a_id}" if a_id else f"https://api.quran.com/api/v4/verses/by_chapter/{s_id}"
+    p = {"translations": target_translations, "fields": "text_uthmani", "per_page": 20}
+    try:
+        r = requests.get(u, params=p).json()
+        return [r.get('verse')] if a_id else r.get('verses', [])
+    except: return []
 
-# ==========================================
-# 4. PAGE RENDERING FUNCTIONS
-# ==========================================
+def get_daily_verse():
+    day_of_year = datetime.datetime.now().timetuple().tm_yday
+    keys = ["2:255", "94:5", "2:186", "3:139", "65:3", "55:13"]
+    key = keys[day_of_year % len(keys)]
+    s_id, v_id = key.split(":")
+    data = get_data(s_id, v_id)
+    return data[0] if data else None
 
-def change_page(name):
-    st.session_state.page = name
-    st.rerun()
-
-def render_top_header():
-    st.markdown(f"""
-    <div class="top-header">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-                <div style="width:52px; height:52px; background:#0E202C; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#F9C663;">
-                    <i class="fa-solid fa-mosque"></i>
-                </div>
-                <div><b>Welcome</b><br><span style="font-size:14px; opacity:0.9;">to DEEN AI</span></div>
-            </div>
-        </div>
-        <div class="search-container">
-            <span style="color:#B0B5C0; font-size:14px;">Ask any question?</span>
-            <i class="fa-solid fa-magnifying-glass" style="color:#7E57C2;"></i>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-def render_bottom_nav():
-    cols = st.columns(4)
-    with cols[0]:
-        if st.button("🏠\nHome", key="nav_home"): change_page("Home")
-    with cols[1]:
-        if st.button("🎤\nAI", key="nav_ai"): change_page("Talk to AI")
-    with cols[2]:
-        if st.button("🕌\nPray", key="nav_pray"): change_page("Prayer times")
-    with cols[3]:
-        if st.button("📞\nSupport", key="nav_supp"): change_page("Support")
+def get_recitation_url(verse_key):
+    try:
+        s, ay = verse_key.split(':')
+        return f"https://everyayah.com/data/Alafasy_128kbps/{s.zfill(3)}{ay.zfill(3)}.mp3"
+    except: return None
 
 # ==========================================
-# 5. PAGES
+# 4. MAIN APP UI
 # ==========================================
 
-# --- HOME PAGE ---
-if st.session_state.page == "Home":
-    render_top_header()
-    st.markdown("<br><br>", unsafe_allow_html=True)
+# HEADER & PRAYER SECTION
+col_logo, col_title = st.columns([1, 4])
+with col_title:
+    st.markdown("<h2 style='margin:0; color: #d4af37;'>DeenAI</h2>", unsafe_allow_html=True)
+
+with st.expander("📍 Prayer Times & Location"):
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        city_input = st.text_input("Enter City", st.session_state.user_city, label_visibility="collapsed")
+    with c2:
+        if st.button("🛰️ GPS"):
+            st.session_state.user_city = get_location()
+            st.rerun()
     
-    st.write("### Categories")
-    c1, c2, c3 = st.columns(3)
-    with c1: 
-        if st.button("👥\nTalk to AI"): change_page("Talk to AI")
-    with c2: 
-        if st.button("⏰\nPrayer Time"): change_page("Prayer times")
-    with c3: 
-        if st.button("📚\nHadith"): change_page("Hadith Search")
-        
-    c4, c5, c6 = st.columns(3)
-    with c4: 
-        if st.button("📖\nQuran"): change_page("Quran Reader")
-    with c5: 
-        if st.button("⭐\nSaved"): change_page("Saved Knowledge")
-    with c6: 
-        if st.button("🔗\nVerse"): change_page("Home")
+    if city_input:
+        st.session_state.user_city = city_input
+        pt = get_prayer_times(city_input)
+        if pt:
+            p_cols = st.columns(3)
+            prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha", "Sunrise"]
+            for i, p in enumerate(prayers):
+                with p_cols[i % 3]:
+                    st.markdown(f'<div class="prayer-time-box"><small>{p}</small><br><b>{pt[p]}</b></div>', unsafe_allow_html=True)
 
-    st.write("### Verse of the day")
-    v = get_quran_verse()
-    st.markdown(f"""
-        <div class="verse-card-main">
-            <div class="arabic-badge">﷽</div>
-            <div>
-                <div style="font-size:18px; font-weight:bold; direction:rtl;">{v['ar']}</div>
-                <div style="font-size:14px; color:#555;">{v['en']}</div>
-            </div>
+# ALWAYS SHOW VERSE OF THE DAY (Unless in Quran/Hadith mode)
+if not st.session_state.v_list and not st.session_state.h_text:
+    dv = get_daily_verse()
+    if dv:
+        st.markdown(f"""
+        <div class="hero-box">
+            <small style="color: #d4af37; text-transform: uppercase; letter-spacing: 2px;">Verse of the Day</small>
+            <div class="arabic-txt" style="margin: 15px 0;">{dv.get('text_uthmani', '')}</div>
+            <div style="font-weight: bold; font-size: 14px; color: #d4af37;">Surah {dv.get('verse_key', '')}</div>
         </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-# --- TALK TO AI ---
-elif st.session_state.page == "Talk to AI":
-    st.button("← Back", on_click=change_page, args=("Home",))
-    st.title("🎤 Talk to AI")
+# MODE 1: QURAN READER
+if st.session_state.v_list:
+    if st.button("← Back to Dashboard"):
+        st.session_state.v_list = None
+        st.rerun()
     
-    audio = mic_recorder(start_prompt="Tap to Record", stop_prompt="Stop", just_once=True, key='recorder')
-    
-    if audio:
-        st.success("Transcribing voice...")
-        # (In a full app, you'd send audio to Groq Whisper here)
-        # For now, we simulate the text input:
-        user_text = "What is the importance of Salah?" 
-        st.session_state.messages.append({"role": "user", "content": user_text})
-        
-        res = client.chat.completions.create(
-            messages=[{"role": "system", "content": "Concise Islamic assistant."}] + st.session_state.messages,
-            model="llama-3.3-70b-versatile"
-        ).choices[0].message.content
-        
-        st.write(f"**DeenAI:** {res}")
-        st.audio(speak(res), format="audio/mp3", autoplay=True)
+    s_choice = st.number_input("Surah Number", 1, 114, 1)
+    if st.button("Load Surah"):
+        st.session_state.v_list = get_data(s_choice)
+        st.rerun()
 
-# --- PRAYER TIMES ---
-elif st.session_state.page == "Prayer times":
-    st.button("← Back", on_click=change_page, args=("Home",))
-    st.title("📍 Prayer Times")
-    pt = get_prayer_times(st.session_state.user_city)
-    if pt:
-        for p, t in pt.items():
-            if p in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
-                st.write(f"**{p}:** {t}")
+    for v in st.session_state.v_list:
+        st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v.get("text_uthmani")}</div>', unsafe_allow_html=True)
+        if 'translations' in v:
+            for trans in v['translations']:
+                clean_t = re.sub('<[^<]+?>', '', trans['text'])
+                st.markdown(f'<div class="trans-txt">{clean_t}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# --- HADITH SEARCH ---
-elif st.session_state.page == "Hadith Search":
-    st.button("← Back", on_click=change_page, args=("Home",))
-    st.title("📜 Hadith Search")
-    query = st.text_input("Search for a topic (e.g. Patience)")
-    if query:
-        res = client.chat.completions.create(
-            messages=[{"role": "system", "content": "Provide Sahih Bukhari or Muslim only."},{"role":"user","content":query}],
-            model="llama-3.3-70b-versatile"
-        ).choices[0].message.content
-        st.info(res)
+# MODE 2: HADITH SEARCH
+elif st.session_state.h_text == "init":
+    if st.button("← Back to Dashboard"):
+        st.session_state.h_text = None
+        st.rerun()
+    topic = st.text_input("Search Hadith Topic")
+    if st.button("Search Sahihayn"):
+        with st.spinner("Consulting Bukhari & Muslim..."):
+            res = client.chat.completions.create(
+                messages=[{"role":"system","content":"Only provide Sahih Bukhari or Muslim Hadith."},{"role":"user","content":f"Hadith about {topic}"}],
+                model="llama-3.3-70b-versatile").choices[0].message.content
+            st.info(res)
 
-# --- QURAN READER ---
-elif st.session_state.page == "Quran Reader":
-    st.button("← Back", on_click=change_page, args=("Home",))
-    st.title("📖 Quran Reader")
-    st.write("Surah Al-Fatiha")
-    st.audio("https://server8.mp3quran.net/afs/001.mp3")
-    st.markdown("<div style='direction:rtl; font-size:24px;'>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>", unsafe_allow_html=True)
+# MODE 3: DASHBOARD & CHAT
+else:
+    # Quick Navigation
+    nav1, nav2, nav3 = st.columns(3)
+    with nav1:
+        if st.button("📖 Quran"):
+            st.session_state.v_list = get_data(1); st.rerun()
+    with nav2:
+        if st.button("📜 Hadith"):
+            st.session_state.h_text = "init"; st.rerun()
+    with nav3:
+        if st.button("⭐ Saved"): st.toast("Coming Soon")
 
-# --- SUPPORT ---
-elif st.session_state.page == "Support":
-    st.button("← Back", on_click=change_page, args=("Home",))
-    st.title("🤝 Support Us")
-    st.write("Please share the app with friends and family via this link:")
-    st.code("https://deenai.streamlit.app")
+    st.markdown("<br>", unsafe_allow_html=True)
 
-# FOOTER NAVIGATION (Always visible)
-st.markdown("<br><br><br>", unsafe_allow_html=True)
-render_bottom_nav()
+    # Chat Display
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]): st.markdown(m["content"])
+
+    # Voice & Text Input
+    prompt = st.chat_input("Ask anything...")
+    audio_in = mic_recorder(start_prompt="🎤 Hold to Speak", stop_prompt="⌛ Processing", key='mic', just_once=True)
+
+    if prompt or audio_in:
+        u_input = prompt if prompt else "User sent a voice message"
+        st.session_state.messages.append({"role": "user", "content": u_input})
+        with st.chat_message("user"): st.markdown(u_input)
+
+        with st.chat_message("assistant"):
+            hist = [{"role": "system", "content": "You are DeenAI. Strictly use Quran and Sahihayn. Be helpful and concise."}] + st.session_state.messages
+            res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=hist).choices[0].message.content
+            st.markdown(res)
+            st.session_state.messages.append({"role": "assistant", "content": res})
+            v_data = speak_gtts(res)
+            if v_data: st.audio(v_data, format="audio/mp3", autoplay=True)
+
 
