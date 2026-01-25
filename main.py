@@ -10,7 +10,7 @@ if 'messages' not in st.session_state: st.session_state.messages = []
 if 'v_list' not in st.session_state: st.session_state.v_list = None
 if 'h_text' not in st.session_state: st.session_state.h_text = None
 if 'user_city' not in st.session_state: st.session_state.user_city = "London"
-if 'trans_lang' not in st.session_state: st.session_state.trans_lang = "131"
+if 'trans_lang' not in st.session_state: st.session_state.trans_lang = "158"
 
 G_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=G_KEY)
@@ -42,6 +42,7 @@ st.markdown("""
             margin-bottom: 15px; border-left: 4px solid #d4af37; 
         }
         .prayer-time-box { text-align:center; padding:10px; border:1px solid rgba(212,175,55,0.2); border-radius:12px; background: rgba(0,0,0,0.3); }
+        .ref-tag { color: #00ffcc; font-weight: bold; font-size: 0.85em; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -58,6 +59,7 @@ def get_prayer_times(city_name):
 
 def speak_gtts(text):
     try:
+        # Remove markdown symbols for cleaner audio
         clean_text = re.sub(r'[*_#]', '', text)
         tts = gTTS(text=clean_text[:1000], lang='en')
         fp = io.BytesIO()
@@ -86,8 +88,8 @@ def get_audio_url(verse_key):
 st.markdown("<h2 style='text-align: center; color: #d4af37;'>DeenAI</h2>", unsafe_allow_html=True)
 
 lang_map = {
-    "English": "131", "Urdu": "158", "Turkish": "77", 
-    "Sindhi": "836", "Russian": "79", "Uzbek": "101", "French": "31"
+    "Urdu": "158", "Bengali": "161", "Indonesian": "33",
+    "Turkish": "77", "Sindhi": "836", "Hindi": "122", "Persian": "135"
 }
 
 with st.container():
@@ -138,15 +140,15 @@ elif st.session_state.h_text == "init":
         st.rerun()
     topic = st.text_input("Search Hadith Topic")
     if st.button("Search"):
-        with st.spinner("Searching..."):
+        with st.spinner("Searching Sahihayn..."):
             res = client.chat.completions.create(
-                messages=[{"role":"system","content":"Use Sahih Bukhari/Muslim."},{"role":"user","content":topic}],
+                messages=[{"role":"system","content":"You are an Islamic scholar. Answer only using Sahih Bukhari and Sahih Muslim. Always provide the Hadith number."},{"role":"user","content":topic}],
                 model="llama-3.3-70b-versatile").choices[0].message.content
             st.info(res)
 
 # MODE 3: DASHBOARD & CHAT
 else:
-    dv_list = get_data(2, 255) 
+    dv_list = get_data(1, 1) 
     if dv_list and dv_list[0]:
         dv = dv_list[0]
         raw_trans = dv.get('translations', [{}])[0].get('text', 'Translation loading...')
@@ -154,7 +156,7 @@ else:
         
         st.markdown(f"""
         <div class="hero-box">
-            <small style="color: #d4af37;">Ayat al-Kursi</small>
+            <small style="color: #d4af37;">Daily Verse</small>
             <div class="arabic-txt">{dv.get('text_uthmani', '')}</div>
             <div class="trans-txt">{clean_trans}</div>
         </div>
@@ -172,12 +174,12 @@ else:
         with st.chat_message(m["role"]): st.markdown(m["content"])
 
     prompt = st.chat_input("Ask DeenAI...")
-    audio_bytes = mic_recorder(start_prompt="🎤 Record", stop_prompt="🛑 Stop", key='mic', just_once=True)
+    audio_bytes = mic_recorder(start_prompt="🎤 Speak to Deen AI", stop_prompt="🛑 Stop", key='mic', just_once=True)
 
     if prompt or audio_bytes:
         u_input = prompt
         if audio_bytes:
-            with st.spinner("Processing..."):
+            with st.spinner("Hearing you..."):
                 f_name = "temp_audio.wav"
                 with open(f_name, "wb") as f: f.write(audio_bytes['bytes'])
                 with open(f_name, "rb") as af:
@@ -188,10 +190,22 @@ else:
         with st.chat_message("user"): st.markdown(u_input)
 
         with st.chat_message("assistant"):
+            # REINFORCED SCHOLARLY SYSTEM PROMPT
+            system_prompt = (
+                "You are DeenAI, a devout Muslim companion. Your purpose is to provide guidance "
+                "strictly in light of the Holy Quran and Sahih Hadith (Bukhari and Muslim). "
+                "1. MANDATORY: For every verse mentioned, you MUST provide the reference as [Surah Name Surah:Ayah]. "
+                "2. MANDATORY: For every Hadith, you MUST state if it is from Bukhari or Muslim and provide the Hadith number. "
+                "3. Be firm on Aqeedah. Clearly state that anyone claiming a prophet after Muhammad SAW (like Qadiyanis) "
+                "is outside the fold of Islam based on the Quran (33:40) and Mutawatir Hadith. "
+                "Always cite your sources clearly."
+            )
+            
             res = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role":"system","content":"Islamic assistant."}] + st.session_state.messages
+                messages=[{"role":"system","content": system_prompt}] + st.session_state.messages
             ).choices[0].message.content
+            
             st.markdown(res)
             st.session_state.messages.append({"role": "assistant", "content": res})
             audio_data = speak_gtts(res)
