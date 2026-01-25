@@ -10,7 +10,6 @@ if 'messages' not in st.session_state: st.session_state.messages = []
 if 'v_list' not in st.session_state: st.session_state.v_list = None
 if 'h_text' not in st.session_state: st.session_state.h_text = None
 if 'user_city' not in st.session_state: st.session_state.user_city = "London"
-# Default translation to English (Sahih International)
 if 'trans_lang' not in st.session_state: st.session_state.trans_lang = "131"
 
 G_KEY = st.secrets["GROQ_API_KEY"]
@@ -60,7 +59,6 @@ def speak_gtts(text):
     except: return None
 
 def get_data(s_id, a_id=None):
-    # API v4 call using the globally selected translation language
     u = f"https://api.quran.com/api/v4/verses/by_key/{s_id}:{a_id}" if a_id else f"https://api.quran.com/api/v4/verses/by_chapter/{s_id}"
     p = {"translations": st.session_state.trans_lang, "fields": "text_uthmani", "per_page": 20}
     try:
@@ -71,7 +69,6 @@ def get_data(s_id, a_id=None):
 def get_audio_url(verse_key):
     try:
         s, ay = verse_key.split(':')
-        # Audio from Mishary Rashid Alafasy
         return f"https://everyayah.com/data/Alafasy_128kbps/{s.zfill(3)}{ay.zfill(3)}.mp3"
     except: return None
 
@@ -81,27 +78,19 @@ def get_audio_url(verse_key):
 
 st.markdown("<h2 style='text-align: center; color: #d4af37;'>DeenAI</h2>", unsafe_allow_html=True)
 
-# Language Mapping (IDs from Quran.com API)
 lang_map = {
-    "English": "131",
-    "Urdu": "158",
-    "Turkish": "77",
-    "Sindhi": "836",
-    "Russian": "79",
-    "Uzbek": "101",
-    "French": "31"
+    "English": "131", "Urdu": "158", "Turkish": "77", 
+    "Sindhi": "836", "Russian": "79", "Uzbek": "101", "French": "31"
 }
 
-# --- GLOBAL LANGUAGE SELECTOR ---
 with st.container():
     col_l1, col_l2 = st.columns([2, 1])
     with col_l1:
-        st.write("🌍 Select Translation Language:")
+        st.write("🌍 Translation Language:")
     with col_l2:
         selected_lang_name = st.selectbox("Lang", list(lang_map.keys()), index=0, label_visibility="collapsed")
         st.session_state.trans_lang = lang_map[selected_lang_name]
 
-# Prayer Times Expansion
 with st.expander("📍 Prayer Times"):
     city_input = st.text_input("City", st.session_state.user_city)
     if city_input:
@@ -126,12 +115,12 @@ if st.session_state.v_list:
 
     for v in st.session_state.v_list:
         with st.container():
-            st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v.get("text_uthmani")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v.get("text_uthmani", "")}</div>', unsafe_allow_html=True)
             for trans in v.get('translations', []):
-                clean_t = re.sub('<[^<]+?>', '', trans['text'])
+                clean_t = re.sub('<[^<]+?>', '', trans.get('text', ''))
                 st.markdown(f'<div class="trans-txt"><b>[{selected_lang_name}]</b>: {clean_t}</div>', unsafe_allow_html=True)
             
-            audio_url = get_audio_url(v.get('verse_key'))
+            audio_url = get_audio_url(v.get('verse_key', ''))
             if audio_url: st.audio(audio_url)
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -141,24 +130,28 @@ elif st.session_state.h_text == "init":
         st.session_state.h_text = None
         st.rerun()
     topic = st.text_input("Search Hadith Topic")
-    if st.button("Search Sahihayn"):
+    if st.button("Search"):
         with st.spinner("Searching..."):
             res = client.chat.completions.create(
-                messages=[{"role":"system","content":"Only use Sahih Bukhari or Muslim."},{"role":"user","content":topic}],
+                messages=[{"role":"system","content":"Use Sahih Bukhari/Muslim."},{"role":"user","content":topic}],
                 model="llama-3.3-70b-versatile").choices[0].message.content
             st.info(res)
 
 # MODE 3: DASHBOARD & CHAT
 else:
-    # Verse of the Day (Dynamically loading based on selected language)
-    dv_list = get_data(2, 255) # Ayat al-Kursi as placeholder
-    if dv_list:
+    # SAFETY FIX FOR VERSE OF DAY
+    dv_list = get_data(2, 255) 
+    if dv_list and dv_list[0]:
         dv = dv_list[0]
+        # Check if translations exist before accessing index 0
+        raw_trans = dv.get('translations', [{}])[0].get('text', 'Translation loading...')
+        clean_trans = re.sub('<[^<]+?>', '', raw_trans)
+        
         st.markdown(f"""
         <div class="hero-box">
             <small style="color: #d4af37;">Ayat al-Kursi</small>
-            <div class="arabic-txt">{dv.get('text_uthmani')}</div>
-            <div class="trans-txt">{re.sub('<[^<]+?>', '', dv['translations'][0]['text'])}</div>
+            <div class="arabic-txt">{dv.get('text_uthmani', '')}</div>
+            <div class="trans-txt">{clean_trans}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -170,20 +163,16 @@ else:
     with nav3:
         if st.button("⭐ Saved"): st.toast("Coming Soon")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # Chat Display
     for m in st.session_state.messages:
         with st.chat_message(m["role"]): st.markdown(m["content"])
 
-    # Voice & Text Input
     prompt = st.chat_input("Ask DeenAI...")
-    audio_bytes = mic_recorder(start_prompt="🎤 Hold to Speak", stop_prompt="🛑 Stop", key='mic', just_once=True)
+    audio_bytes = mic_recorder(start_prompt="🎤 Record", stop_prompt="🛑 Stop", key='mic', just_once=True)
 
     if prompt or audio_bytes:
         u_input = prompt
         if audio_bytes:
-            with st.spinner("Processing Voice..."):
+            with st.spinner("Processing..."):
                 f_name = "temp_audio.wav"
                 with open(f_name, "wb") as f: f.write(audio_bytes['bytes'])
                 with open(f_name, "rb") as af:
@@ -196,7 +185,7 @@ else:
         with st.chat_message("assistant"):
             res = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role":"system","content":"Islamic scholar assistant."}] + st.session_state.messages
+                messages=[{"role":"system","content":"Islamic assistant."}] + st.session_state.messages
             ).choices[0].message.content
             st.markdown(res)
             st.session_state.messages.append({"role": "assistant", "content": res})
