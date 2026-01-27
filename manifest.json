@@ -1,16 +1,16 @@
 {
   "name": "DeenAI",
   "short_name": "DeenAI",
+  "description": "Your AI Spiritual Companion",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#001a0f",
   "theme_color": "#d4af37",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/2823/2823055.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ]
 }
