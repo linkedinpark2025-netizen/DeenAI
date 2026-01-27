@@ -1,7 +1,7 @@
 {
   "name": "DeenAI",
   "short_name": "DeenAI",
-  "description": "Your AI Spiritual Companion",
+  "description": "AI Spiritual Companion & Quran Toolkit",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#001a0f",
