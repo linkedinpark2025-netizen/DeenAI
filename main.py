@@ -93,17 +93,29 @@ if nav_col[3].button("🧭 Qibla"): st.session_state.app_mode = "Qibla Finder"; 
 # 5. APP MODES
 # ==========================================
 
+# --- QIBLA FINDER (FIXED WITH HEADERS) ---
 if st.session_state.app_mode == "Qibla Finder":
     st.subheader("🧭 Qibla Direction")
     q_city = st.text_input("Enter City for Qibla", st.session_state.user_city)
     if q_city:
-        geo = requests.get(f"https://nominatim.openstreetmap.org/search?q={q_city}&format=json").json()
-        if geo:
-            lat, lon = geo[0]['lat'], geo[0]['lon']
-            q_res = requests.get(f"https://api.aladhan.com/v1/qibla/{lat}/{lon}").json()
-            deg = q_res['data']['direction']
-            st.markdown(f'<div class="qibla-circle"><h1>{round(deg)}°</h1></div>', unsafe_allow_html=True)
-            st.info(f"Qibla direction from {q_city} is {round(deg)}° from North.")
+        # User-Agent header is mandatory for Nominatim
+        headers = {'User-Agent': 'DeenAI_App_v1.0'}
+        try:
+            geo_res = requests.get(f"https://nominatim.openstreetmap.org/search?q={q_city}&format=json", headers=headers, timeout=10)
+            if geo_res.status_code == 200:
+                geo_data = geo_res.json()
+                if geo_data:
+                    lat, lon = geo_data[0]['lat'], geo_data[0]['lon']
+                    q_res = requests.get(f"https://api.aladhan.com/v1/qibla/{lat}/{lon}").json()
+                    deg = q_res['data']['direction']
+                    st.markdown(f'<div class="qibla-circle"><h1>{round(deg)}°</h1></div>', unsafe_allow_html=True)
+                    st.info(f"Qibla is {round(deg)}° from North in {q_city}.")
+                else:
+                    st.warning("City not found.")
+            else:
+                st.error("Service busy. Please try again.")
+        except:
+            st.error("Error connecting to location services.")
 
 elif st.session_state.app_mode == "Search Topic":
     st.subheader("🔍 Search by Topic")
@@ -125,7 +137,7 @@ elif st.session_state.app_mode == "Quran Reader":
 
 # --- DASHBOARD (HOME) ---
 else:
-    # --- UPDATED ROUND ROBIN LOGIC ---
+    # --- ROUND ROBIN LOGIC ---
     day_of_year = datetime.now().timetuple().tm_yday
     rotation_keys = ["2:153", "3:139", "94:5", "2:186", "8:30", "29:69", "39:53", "48:4", "55:13", "65:3"]
     todays_key = rotation_keys[day_of_year % len(rotation_keys)]
