@@ -1,7 +1,8 @@
-import os, requests, re, streamlit as st, datetime, io
+import os, requests, re, streamlit as st, datetime, io, asyncio
 from groq import Groq
 from gtts import gTTS 
 from streamlit_mic_recorder import mic_recorder
+from datetime import datetime
 
 # ==========================================
 # 1. INITIALIZATION & SESSION STATE
@@ -11,26 +12,20 @@ if 'v_list' not in st.session_state: st.session_state.v_list = None
 if 'h_text' not in st.session_state: st.session_state.h_text = None
 if 'user_city' not in st.session_state: st.session_state.user_city = "London"
 if 'trans_lang' not in st.session_state: st.session_state.trans_lang = "158"
+if 'app_mode' not in st.session_state: st.session_state.app_mode = "Dashboard"
 
-G_KEY = st.secrets["GROQ_API_KEY"]
+G_KEY = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=G_KEY)
 
 # ==========================================
-# 2. MOBILE-FIRST PREMIUM CSS & PWA TAGS
+# 2. MOBILE-FIRST PREMIUM CSS
 # ==========================================
 st.set_page_config(page_title="DeenAI", layout="wide", page_icon="🕌", initial_sidebar_state="collapsed")
 
 st.markdown("""
-    <link rel="manifest" href="manifest.json">
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('service-worker.js');
-      }
-    </script>
-    
     <style>
         .stApp { background: linear-gradient(135deg, #001a0f 0%, #002b24 100%); color: #d4af37; }
-        [data-testid="stSidebar"] { display: none; }
+        [data-testid="stSidebar"] { background-color: #001a0f; }
         .hero-box {
             background: rgba(0,77,64,0.3); padding: 25px; border-radius: 20px;
             border: 1px solid rgba(212, 175, 55, 0.2); text-align: center; margin-bottom: 20px;
@@ -42,7 +37,10 @@ st.markdown("""
             margin-bottom: 15px; border-left: 4px solid #d4af37; 
         }
         .prayer-time-box { text-align:center; padding:10px; border:1px solid rgba(212,175,55,0.2); border-radius:12px; background: rgba(0,0,0,0.3); }
-        .ref-tag { color: #00ffcc; font-weight: bold; font-size: 0.85em; }
+        .qibla-circle { 
+            border: 4px solid #d4af37; border-radius: 50%; width: 150px; height: 150px; 
+            margin: 20px auto; display: flex; align-items: center; justify-content: center; color: white;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -59,7 +57,6 @@ def get_prayer_times(city_name):
 
 def speak_gtts(text):
     try:
-        # Remove markdown symbols for cleaner audio
         clean_text = re.sub(r'[*_#]', '', text)
         tts = gTTS(text=clean_text[:1000], lang='en')
         fp = io.BytesIO()
@@ -82,73 +79,59 @@ def get_audio_url(verse_key):
     except: return None
 
 # ==========================================
-# 4. MAIN APP UI
+# 4. TOPBAR & NAVIGATION
 # ==========================================
-
 st.markdown("<h2 style='text-align: center; color: #d4af37;'>DeenAI</h2>", unsafe_allow_html=True)
 
-lang_map = {
-    "Urdu": "158", "Bengali": "161", "Indonesian": "33",
-    "Turkish": "77", "Sindhi": "836", "Hindi": "122", "Persian": "135"
-}
+nav_col = st.columns(4)
+if nav_col[0].button("🏠 Home"): st.session_state.app_mode = "Dashboard"; st.rerun()
+if nav_col[1].button("📖 Quran"): st.session_state.app_mode = "Quran Reader"; st.rerun()
+if nav_col[2].button("🔍 Topics"): st.session_state.app_mode = "Search Topic"; st.rerun()
+if nav_col[3].button("🧭 Qibla"): st.session_state.app_mode = "Qibla Finder"; st.rerun()
 
-with st.container():
-    col_l1, col_l2 = st.columns([2, 1])
-    with col_l1:
-        st.write("🌍 Translation Language:")
-    with col_l2:
-        selected_lang_name = st.selectbox("Lang", list(lang_map.keys()), index=0, label_visibility="collapsed")
-        st.session_state.trans_lang = lang_map[selected_lang_name]
+# ==========================================
+# 5. APP MODES
+# ==========================================
 
-with st.expander("📍 Prayer Times"):
-    city_input = st.text_input("City", st.session_state.user_city)
-    if city_input:
-        st.session_state.user_city = city_input
-        pt = get_prayer_times(city_input)
-        if pt:
-            cols = st.columns(5)
-            prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-            for i, p in enumerate(prayers):
-                cols[i].markdown(f'<div class="prayer-time-box"><small>{p}</small><br><b>{pt[p]}</b></div>', unsafe_allow_html=True)
+if st.session_state.app_mode == "Qibla Finder":
+    st.subheader("🧭 Qibla Direction")
+    q_city = st.text_input("Enter City for Qibla", st.session_state.user_city)
+    if q_city:
+        geo = requests.get(f"https://nominatim.openstreetmap.org/search?q={q_city}&format=json").json()
+        if geo:
+            lat, lon = geo[0]['lat'], geo[0]['lon']
+            q_res = requests.get(f"https://api.aladhan.com/v1/qibla/{lat}/{lon}").json()
+            deg = q_res['data']['direction']
+            st.markdown(f'<div class="qibla-circle"><h1>{round(deg)}°</h1></div>', unsafe_allow_html=True)
+            st.info(f"Qibla direction from {q_city} is {round(deg)}° from North.")
 
-# MODE 1: QURAN READER
-if st.session_state.v_list:
-    if st.button("← Back to Dashboard"):
-        st.session_state.v_list = None
-        st.rerun()
-    
+elif st.session_state.app_mode == "Search Topic":
+    st.subheader("🔍 Search by Topic")
+    topic_query = st.text_input("Enter keyword (e.g. Mercy, Patience)")
+    if topic_query:
+        search_res = requests.get(f"https://api.quran.com/api/v4/search?q={topic_query}&size=5&language=en").json()
+        for res in search_res.get('search', {}).get('results', []):
+            v_key = res['verse_key']
+            v_data = get_data(v_key.split(':')[0], v_key.split(':')[1])[0]
+            st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v_data["text_uthmani"]}</div>', unsafe_allow_html=True)
+            st.audio(get_audio_url(v_key))
+
+elif st.session_state.app_mode == "Quran Reader":
     s_choice = st.number_input("Surah Number", 1, 114, 1)
-    if st.button("Load Surah"):
-        st.session_state.v_list = get_data(s_choice)
-        st.rerun()
+    v_list = get_data(s_choice)
+    for v in v_list:
+        st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v.get("text_uthmani", "")}</div>', unsafe_allow_html=True)
+        st.audio(get_audio_url(v.get('verse_key', '')))
 
-    for v in st.session_state.v_list:
-        with st.container():
-            st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v.get("text_uthmani", "")}</div>', unsafe_allow_html=True)
-            for trans in v.get('translations', []):
-                clean_t = re.sub('<[^<]+?>', '', trans.get('text', ''))
-                st.markdown(f'<div class="trans-txt"><b>[{selected_lang_name}]</b>: {clean_t}</div>', unsafe_allow_html=True)
-            
-            audio_url = get_audio_url(v.get('verse_key', ''))
-            if audio_url: st.audio(audio_url)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-# MODE 2: HADITH SEARCH
-elif st.session_state.h_text == "init":
-    if st.button("← Back to Dashboard"):
-        st.session_state.h_text = None
-        st.rerun()
-    topic = st.text_input("Search Hadith Topic")
-    if st.button("Search"):
-        with st.spinner("Searching Sahihayn..."):
-            res = client.chat.completions.create(
-                messages=[{"role":"system","content":"You are an Islamic scholar. Answer only using Sahih Bukhari and Sahih Muslim. Always provide the Hadith number."},{"role":"user","content":topic}],
-                model="llama-3.3-70b-versatile").choices[0].message.content
-            st.info(res)
-
-# MODE 3: DASHBOARD & CHAT
+# --- DASHBOARD (HOME) ---
 else:
-    dv_list = get_data(1, 1) 
+    # --- UPDATED ROUND ROBIN LOGIC ---
+    day_of_year = datetime.now().timetuple().tm_yday
+    rotation_keys = ["2:153", "3:139", "94:5", "2:186", "8:30", "29:69", "39:53", "48:4", "55:13", "65:3"]
+    todays_key = rotation_keys[day_of_year % len(rotation_keys)]
+    s_id, a_id = todays_key.split(':')
+    
+    dv_list = get_data(s_id, a_id)
     if dv_list and dv_list[0]:
         dv = dv_list[0]
         raw_trans = dv.get('translations', [{}])[0].get('text', 'Translation loading...')
@@ -156,20 +139,14 @@ else:
         
         st.markdown(f"""
         <div class="hero-box">
-            <small style="color: #d4af37;">Daily Verse</small>
+            <small style="color: #d4af37;">Verse of the Day • {datetime.now().strftime('%d %B')}</small>
             <div class="arabic-txt">{dv.get('text_uthmani', '')}</div>
             <div class="trans-txt">{clean_trans}</div>
+            <p style='font-size:12px; opacity:0.6; margin-top:5px;'>[Surah {todays_key}]</p>
         </div>
         """, unsafe_allow_html=True)
 
-    nav1, nav2, nav3 = st.columns(3)
-    with nav1:
-        if st.button("📖 Quran Reader"): st.session_state.v_list = get_data(1); st.rerun()
-    with nav2:
-        if st.button("📜 Hadith Search"): st.session_state.h_text = "init"; st.rerun()
-    with nav3:
-        if st.button("⭐ Saved"): st.toast("Coming Soon")
-
+    # Chat Interface
     for m in st.session_state.messages:
         with st.chat_message(m["role"]): st.markdown(m["content"])
 
@@ -179,34 +156,20 @@ else:
     if prompt or audio_bytes:
         u_input = prompt
         if audio_bytes:
-            with st.spinner("Hearing you..."):
-                f_name = "temp_audio.wav"
-                with open(f_name, "wb") as f: f.write(audio_bytes['bytes'])
-                with open(f_name, "rb") as af:
-                    transcription = client.audio.transcriptions.create(model="whisper-large-v3", file=af)
-                    u_input = transcription.text
+            with open("temp.wav", "wb") as f: f.write(audio_bytes['bytes'])
+            with open("temp.wav", "rb") as af:
+                u_input = client.audio.transcriptions.create(model="whisper-large-v3", file=af).text
         
         st.session_state.messages.append({"role": "user", "content": u_input})
         with st.chat_message("user"): st.markdown(u_input)
 
         with st.chat_message("assistant"):
-            # REINFORCED SCHOLARLY SYSTEM PROMPT
-            system_prompt = (
-                "You are DeenAI, a devout Muslim companion. Your purpose is to provide guidance "
-                "strictly in light of the Holy Quran and Sahih Hadith (Bukhari and Muslim). "
-                "1. MANDATORY: For every verse mentioned, you MUST provide the reference as [Surah Name Surah:Ayah]. "
-                "2. MANDATORY: For every Hadith, you MUST state if it is from Bukhari or Muslim and provide the Hadith number. "
-                "3. Be firm on Aqeedah. Clearly state that anyone claiming a prophet after Muhammad SAW (like Qadiyanis) "
-                "is outside the fold of Islam based on the Quran (33:40) and Mutawatir Hadith. "
-                "Always cite your sources clearly."
-            )
-            
+            sys_p = "You are DeenAI, a devout Muslim companion. Guidance strictly from Quran & Sahih Hadith. Cite [Surah:Ayah] and Hadith numbers."
             res = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role":"system","content": system_prompt}] + st.session_state.messages
+                messages=[{"role":"system","content": sys_p}] + st.session_state.messages
             ).choices[0].message.content
-            
             st.markdown(res)
+            audio_out = speak_gtts(res)
+            if audio_out: st.audio(audio_out, autoplay=True)
             st.session_state.messages.append({"role": "assistant", "content": res})
-            audio_data = speak_gtts(res)
-            if audio_data: st.audio(audio_data, format="audio/mp3", autoplay=True)
