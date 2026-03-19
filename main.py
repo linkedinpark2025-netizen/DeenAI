@@ -1,115 +1,143 @@
 import os, requests, re, streamlit as st, datetime
 from groq import Groq
 
-# --- 1. CONFIG & STYLE (Your CSS Theme) ---
+# --- 1. CONFIG & SYSTEM PROMPT ---
 st.set_page_config(page_title="The Digital Maqam", layout="wide")
 
-# This block translates your @theme CSS into the Streamlit app
+if 'app_mode' not in st.session_state: st.session_state.app_mode = "Home"
+if 'messages' not in st.session_state: st.session_state.messages = []
+if 'user_city' not in st.session_state: st.session_state.user_city = "London"
+
+client = Groq(api_key=st.secrets.get("GROQ_API_KEY"))
+
+# --- 2. GLOBAL STYLES (Based on your @theme) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&family=Inter:wght@400;600&family=Amiri:wght@400;700&display=swap');
 
-    /* Variables from your @theme */
     :root {
         --primary: #f2ca50;
         --surface: #00180d;
-        --surface-container-low: #042015;
-        --surface-container-high: #142f23;
+        --surface-low: #042015;
+        --surface-high: #142f23;
+        --surface-highest: #1f3a2d;
         --on-surface-variant: #d0c5af;
-        --secondary: #dac58d;
     }
 
-    .stApp { 
-        background-color: var(--surface); 
-        color: #cbead7; 
-        font-family: 'Inter', sans-serif; 
+    .stApp { background-color: var(--surface); color: #cbead7; font-family: 'Inter', sans-serif; }
+    
+    /* Navigation Bar Fix */
+    .nav-bar {
+        position: fixed; bottom: 0; left: 0; width: 100%;
+        background: rgba(0, 24, 13, 0.8); backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(242, 202, 80, 0.1);
+        display: flex; justify-content: space-around; padding: 1rem; z-index: 1000;
     }
 
-    /* Verse Card - surface-container-low */
-    .verse-card {
-        background-color: var(--surface-container-low);
+    /* Verse/Hadith Cards */
+    .content-card {
+        background: var(--surface-low);
         border: 1px solid rgba(242, 202, 80, 0.1);
-        padding: 2rem;
-        border-radius: 1rem;
-        margin-bottom: 2rem;
+        padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem;
     }
 
-    .arabic-font { 
-        font-family: 'Amiri', serif; 
-        color: var(--primary);
-        font-size: 2rem;
-        line-height: 1.8;
-        text-align: right;
-    }
-
-    /* Prayer Pills - surface-container-high */
-    .prayer-pill {
-        background-color: var(--surface-container-high);
-        border: 1px solid #4d4635;
-        padding: 1rem;
-        border-radius: 0.75rem;
-        text-align: center;
-        min-width: 100px;
-    }
-
-    .gold-gradient {
-        background: linear-gradient(135deg, #f2ca50 0%, #d4af37 100%);
-        color: #3c2f00;
-    }
-
-    /* Hide Streamlit clutter */
-    [data-testid="stHeader"], footer { display: none !important; }
+    .arabic-font { font-family: 'Amiri', serif; color: var(--primary); text-align: right; }
+    
+    /* Hide Streamlit elements */
+    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LAYOUT CONSTRUCTION (The "App.tsx" structure) ---
+# --- 3. UTILITY FUNCTIONS ---
+def get_prayer_times(city):
+    try:
+        r = requests.get(f"https://api.aladhan.com/v1/timingsByCity?city={city}&country=").json()
+        return r['data']['timings']
+    except: return {"Dhuhr": "12:00", "Asr": "15:30", "Maghrib": "18:00"}
 
-# Top Header
-st.markdown(f"""
-<div style="padding: 1rem 0; margin-bottom: 2rem;">
-    <p style="color:var(--secondary); text-transform:uppercase; letter-spacing:0.2em; font-size:0.7rem; font-weight:700;">Assalamu Alaikum</p>
-    <h1 style="font-family:'Plus Jakarta Sans'; font-weight:800; font-size:2.5rem; color:#cbead7; letter-spacing:-0.02em;">Digital Sanctuary</h1>
-</div>
-""", unsafe_allow_html=True)
+def get_quran_verse(s_id, a_id):
+    try:
+        r = requests.get(f"https://api.quran.com/api/v4/verses/by_key/{s_id}:{a_id}?translations=131&fields=text_uthmani").json()
+        return r['verse']
+    except: return None
 
-# Main Verse Card
-st.markdown(f"""
-<div class="verse-card">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-        <span style="background:rgba(242,202,80,0.1); color:var(--primary); padding:4px 12px; border-radius:99px; font-size:0.6rem; font-weight:bold; letter-spacing:0.1em;">VERSE OF THE DAY</span>
-        <span style="color:var(--on-surface-variant); font-size:0.7rem;">Surah Al-Baqarah 2:255</span>
+# --- 4. NAVIGATION LOGIC ---
+# Using streamlit buttons styled like a nav bar
+cols = st.columns(4)
+if cols[0].button("🏠 Home"): st.session_state.app_mode = "Home"; st.rerun()
+if cols[1].button("📖 Quran"): st.session_state.app_mode = "Quran"; st.rerun()
+if cols[2].button("📜 Hadith"): st.session_state.app_mode = "Hadith"; st.rerun()
+if cols[3].button("🧭 Qibla"): st.session_state.app_mode = "Qibla"; st.rerun()
+
+# --- 5. PAGE ROUTING ---
+
+# PAGE: HOME
+if st.session_state.app_mode == "Home":
+    st.markdown('<p style="color:#dac58d; text-transform:uppercase; font-size:0.7rem; font-weight:700; margin-top:2rem;">Assalamu Alaikum</p>', unsafe_allow_html=True)
+    st.markdown('<h1 style="font-family:\'Plus Jakarta Sans\'; font-weight:800; font-size:2.5rem; margin-bottom:2rem;">Digital Sanctuary</h1>', unsafe_allow_html=True)
+    
+    # Verse Card
+    v = get_quran_verse(2, 255)
+    st.markdown(f"""
+    <div class="content-card">
+        <p class="arabic-font" style="font-size:1.8rem;">{v['text_uthmani'] if v else 'اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ'}</p>
+        <p style="color:var(--on-surface-variant); font-style:italic; font-size:0.9rem; margin-top:1rem;">
+            "{re.sub('<[^<]+?>', '', v['translations'][0]['text']) if v else 'Connecting to Sanctuary...'}"
+        </p>
     </div>
-    <p class="arabic-font" dir="rtl">اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ</p>
-    <p style="color:var(--on-surface-variant); font-style:italic; font-size:0.9rem; margin-top:1.5rem; line-height:1.6;">
-        "Allah! There is no god but He, the Living, the Self-subsisting..."
-    </p>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# Prayer Times Grid
-st.markdown('<p style="font-size:0.75rem; font-weight:bold; color:#cbead7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Prayer Times</p>', unsafe_allow_html=True)
+    # AI CHAT SECTION
+    st.markdown('<p style="font-size:0.75rem; font-weight:bold; text-transform:uppercase; margin-top:2rem;">Spiritual Guidance</p>', unsafe_allow_html=True)
+    for m in st.session_state.messages[-3:]:
+        role_style = "background:var(--surface-highest);" if m["role"] == "assistant" else "background:var(--surface-low); border:1px solid #4d4635;"
+        st.markdown(f'<div style="{role_style} padding:1rem; border-radius:0.75rem; margin-bottom:0.5rem; font-size:0.9rem;">{m["content"]}</div>', unsafe_allow_html=True)
+    
+    user_query = st.chat_input("Ask Noor...")
+    if user_query:
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        res = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "system", "content": "You are Noor, a spiritual guide. Quote Quran [Surah:Ayah]."}] + st.session_state.messages
+        ).choices[0].message.content
+        st.session_state.messages.append({"role": "assistant", "content": res})
+        st.rerun()
 
-# Using a Flex Container for the Horizontal Scroll look
-st.markdown(f"""
-<div style="display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 1rem;">
-    <div class="prayer-pill gold-gradient">
-        <p style="font-size:0.6rem; font-weight:bold; text-transform:uppercase; margin:0;">Dhuhr</p>
-        <p style="font-size:1.1rem; font-weight:800; margin:0;">12:58</p>
+# PAGE: QURAN READER
+elif st.session_state.app_mode == "Quran":
+    st.markdown('<h2 style="font-family:\'Plus Jakarta Sans\'; font-weight:800;">Noble Quran</h2>', unsafe_allow_html=True)
+    surah = st.number_input("Surah Number", 1, 114, 1)
+    # Simplified logic to show first 5 verses of selected surah
+    for i in range(1, 6):
+        v = get_quran_verse(surah, i)
+        if v:
+            st.markdown(f"""
+            <div class="content-card">
+                <p class="arabic-font" style="font-size:1.5rem;">{v['text_uthmani']}</p>
+                <p style="color:var(--on-surface-variant); font-size:0.8rem;">{re.sub('<[^<]+?>', '', v['translations'][0]['text'])}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+# PAGE: HADITH LIBRARY
+elif st.session_state.app_mode == "Hadith":
+    st.markdown('<h2 style="font-family:\'Plus Jakarta Sans\'; font-weight:800;">Hadith Library</h2>', unsafe_allow_html=True)
+    topic = st.text_input("Search Topic (e.g. Patience)")
+    if topic:
+        with st.spinner("Searching..."):
+            res = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": f"Share a Sahih Hadith about {topic}. Include the narrator and collection."}]
+            ).choices[0].message.content
+            st.markdown(f'<div class="content-card">{res}</div>', unsafe_allow_html=True)
+
+# PAGE: QIBLA
+elif st.session_state.app_mode == "Qibla":
+    st.markdown('<h2 style="font-family:\'Plus Jakarta Sans\'; font-weight:800; text-align:center;">Qibla Finder</h2>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="text-align:center; padding: 3rem;">
+        <div style="width:200px; height:200px; border:4px solid var(--primary); border-radius:50%; margin: 0 auto; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:3rem; transform: rotate(45deg);">⬆️</span>
+        </div>
+        <p style="margin-top:2rem; color:var(--on-surface-variant);">Pointing towards the Kaaba in Mecca</p>
     </div>
-    <div class="prayer-pill">
-        <p style="font-size:0.6rem; font-weight:bold; text-transform:uppercase; margin:0; color:var(--on-surface-variant);">Asr</p>
-        <p style="font-size:1.1rem; font-weight:800; margin:0;">15:22</p>
-    </div>
-    <div class="prayer-pill">
-        <p style="font-size:0.6rem; font-weight:bold; text-transform:uppercase; margin:0; color:var(--on-surface-variant);">Maghrib</p>
-        <p style="font-size:1.1rem; font-weight:800; margin:0;">18:05</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Chat Input Placeholder (Styling the Groq input)
-st.markdown('<div style="margin-top:3rem;"></div>', unsafe_allow_html=True)
-st.markdown('<p style="font-size:0.75rem; font-weight:bold; color:#cbead7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Spiritual Guidance</p>', unsafe_allow_html=True)
-
-# Your Groq logic would follow here...
-prompt = st.chat_input("Ask Noor...")
+    """, unsafe_allow_html=True)
