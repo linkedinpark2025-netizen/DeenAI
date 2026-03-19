@@ -1,5 +1,6 @@
-streamlit==1.53.1
-requests==2.32.3
-groq==1.0.0
-gTTS==2.5.4
-streamlit-mic-recorder==0.0.8
+streamlit
+groq
+gTTS
+streamlit-mic-recorder
+streamlit-js-eval
+requests
