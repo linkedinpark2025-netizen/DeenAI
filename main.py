@@ -1,166 +1,217 @@
-import streamlit as st
-import requests
-import os
+import os, requests, re, streamlit as st, datetime, io, asyncio
 from groq import Groq
+from gtts import gTTS 
+from streamlit_mic_recorder import mic_recorder
+from datetime import datetime
+from streamlit_js_eval import streamlit_js_eval
 
-# --- INITIALIZATION ---
-if 'app_mode' not in st.session_state: st.session_state.app_mode = "Guide"
-if 'messages' not in st.session_state: 
-    st.session_state.messages = [{"role": "assistant", "content": "Assalamu Alaikum. I am Noor, your digital companion on this spiritual journey. How may I assist your heart today?"}]
+# ==========================================
+# 1. INITIALIZATION & SESSION STATE
+# ==========================================
+if 'messages' not in st.session_state: st.session_state.messages = []
+if 'v_list' not in st.session_state: st.session_state.v_list = None
+if 'user_city' not in st.session_state: st.session_state.user_city = "London"
+if 'trans_lang' not in st.session_state: st.session_state.trans_lang = "131" 
+if 'app_mode' not in st.session_state: st.session_state.app_mode = "Dashboard"
 
-G_KEY = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-client = Groq(api_key=G_KEY) if G_KEY else None
+# Accessing the key via secrets for Cloud or environment for local/replit
+G_KEY = st.secrets["GROQ_API_KEY"] if "GROQ_API_KEY" in st.secrets else os.environ.get("GROQ_API_KEY")
+client = Groq(api_key=G_KEY)
 
-# --- UI CONFIG ---
-st.set_page_config(page_title="Digital Sanctuary", layout="wide", initial_sidebar_state="collapsed")
+# ==========================================
+# 2. MOBILE-FIRST PREMIUM CSS
+# ==========================================
+st.set_page_config(page_title="DeenAI", layout="wide", page_icon="🕌", initial_sidebar_state="collapsed")
 
-# --- FULL CSS INJECTION (Your exact styling) ---
 st.markdown("""
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&family=Inter:wght@400;600&family=Amiri:wght@400;700&display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<style>
-    /* Hide Streamlit Native UI */
-    #MainMenu, footer, header {visibility: hidden;}
-    .stApp { background-color: #00180d; }
-    .stChatInputContainer { bottom: 110px !important; background: transparent !important; border: none !important; }
+    <style>
+        .stApp { background: linear-gradient(135deg, #001a0f 0%, #002b24 100%); color: #d4af37; }
+        .hero-box {
+            background: rgba(0,77,64,0.3); padding: 25px; border-radius: 20px;
+            border: 1px solid rgba(212, 175, 55, 0.2); text-align: center; margin-bottom: 20px;
+        }
+        .arabic-txt { font-size: 32px; color: #ffffff; text-align: center; direction: rtl; font-family: 'serif'; line-height: 1.8; }
+        .trans-txt { color: #d4af37; font-size: 16px; margin-top: 10px; opacity: 0.9; border-top: 1px solid rgba(212,175,55,0.1); padding-top: 8px; }
+        .verse-card { 
+            background: rgba(0,0,0,0.3); padding: 20px; border-radius: 15px; 
+            margin-bottom: 15px; border-left: 4px solid #d4af37; 
+        }
+        .prayer-time-box { text-align:center; padding:10px; border:1px solid rgba(212,175,55,0.2); border-radius:12px; background: rgba(0,0,0,0.3); }
+        .qibla-circle { 
+            border: 4px solid #d4af37; border-radius: 50%; width: 150px; height: 150px; 
+            margin: 20px auto; display: flex; align-items: center; justify-content: center; color: white;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 3. UTILITIES
+# ==========================================
+
+def get_prayer_times(city_name):
+    try:
+        url = f"https://api.aladhan.com/v1/timingsByCity?city={city_name}&country="
+        r = requests.get(url, timeout=10).json()
+        return r['data']['timings'] if r['code'] == 200 else None
+    except: return None
+
+def speak_gtts(text):
+    try:
+        clean_text = re.sub(r'[*_#]', '', text)
+        tts = gTTS(text=clean_text[:1000], lang='en')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except: return None
+
+def get_data(s_id, a_id=None):
+    u = f"https://api.quran.com/api/v4/verses/by_key/{s_id}:{a_id}" if a_id else f"https://api.quran.com/api/v4/verses/by_chapter/{s_id}"
+    p = {"translations": st.session_state.trans_lang, "fields": "text_uthmani", "per_page": 20}
+    try:
+        r = requests.get(u, params=p).json()
+        return [r.get('verse')] if a_id else r.get('verses', [])
+    except: return []
+
+def get_audio_url(verse_key):
+    try:
+        s, ay = verse_key.split(':')
+        return f"https://everyayah.com/data/Alafasy_128kbps/{s.zfill(3)}{ay.zfill(3)}.mp3"
+    except: return None
+
+# ==========================================
+# 4. TOPBAR & NAVIGATION
+# ==========================================
+st.markdown("<h2 style='text-align: center; color: #d4af37;'>DeenAI</h2>", unsafe_allow_html=True)
+
+nav_col = st.columns(4)
+if nav_col[0].button("🏠 Home"): st.session_state.app_mode = "Dashboard"; st.rerun()
+if nav_col[1].button("📖 Quran"): st.session_state.app_mode = "Quran Reader"; st.rerun()
+if nav_col[2].button("📜 Hadith"): st.session_state.app_mode = "Hadith Search"; st.rerun()
+if nav_col[3].button("🧭 Qibla"): st.session_state.app_mode = "Qibla Finder"; st.rerun()
+
+# ==========================================
+# 5. APP MODES
+# ==========================================
+
+lang_map = {"English": "131", "Urdu": "158", "Bengali": "161", "Indonesian": "33", "Turkish": "77", "Hindi": "122", "Persian": "135"}
+
+# --- DASHBOARD / HOME ---
+if st.session_state.app_mode == "Dashboard":
+    # Language Selector
+    col_l1, col_l2 = st.columns([2, 1])
+    with col_l1: st.write("🌍 Translation Language:")
+    with col_l2:
+        current_idx = list(lang_map.values()).index(st.session_state.trans_lang) if st.session_state.trans_lang in lang_map.values() else 0
+        sel_lang = st.selectbox("Lang", list(lang_map.keys()), index=current_idx, label_visibility="collapsed")
+        st.session_state.trans_lang = lang_map[sel_lang]
+
+    # Prayer Times Section with Auto-Detection
+    with st.expander("📍 Prayer Times"):
+        c1, c2 = st.columns([3, 1])
+        with c2:
+            if st.button("🎯 Auto"):
+                loc = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition((pos) => { return pos.coords.latitude + ',' + pos.coords.longitude; })", want_output=True)
+                if loc:
+                    lat, lon = loc.split(',')
+                    geo_url = f"https://api.aladhan.com/v1/address?latitude={lat}&longitude={lon}"
+                    geo_data = requests.get(geo_url).json()
+                    if geo_data['code'] == 200:
+                        st.session_state.user_city = geo_data['data']['city'] or geo_data['data']['region']
+                        st.rerun()
+        
+        with c1:
+            city_input = st.text_input("City", st.session_state.user_city, label_visibility="collapsed")
+        
+        if city_input:
+            st.session_state.user_city = city_input
+            pt = get_prayer_times(city_input)
+            if pt:
+                cols = st.columns(5)
+                prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+                for i, p in enumerate(prayers):
+                    cols[i].markdown(f'<div class="prayer-time-box"><small>{p}</small><br><b>{pt[p]}</b></div>', unsafe_allow_html=True)
+
+    # Round-Robin Verse of the Day
+    day_of_year = datetime.now().timetuple().tm_yday
+    rotation_keys = ["2:153", "3:139", "94:5", "2:186", "8:30", "29:69", "39:53", "48:4", "55:13", "65:3"]
+    todays_key = rotation_keys[day_of_year % len(rotation_keys)]
+    s_id, a_id = todays_key.split(':')
     
-    /* Your Custom Classes */
-    .message-gradient { background: linear-gradient(135deg, #142f23 0%, #082419 100%); }
-    .ai-border { border: 1px solid rgba(242, 202, 80, 0.15); }
-    .gold-glow { box-shadow: 0 0 20px rgba(242, 202, 80, 0.15); }
-    .arabic-font { font-family: 'Amiri', serif; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- HEADER (Shared) ---
-st.markdown(f"""
-<header class="fixed top-0 w-full z-50 bg-[#00180d]/80 backdrop-blur-xl flex justify-between items-center px-6 h-16 shadow-[0_4px_30px_rgba(0,26,15,0.6)]">
-    <div class="flex items-center gap-4">
-        <span class="material-symbols-outlined text-[#f2ca50]">menu</span>
-        <h1 class="text-[#f2ca50] font-bold tracking-widest uppercase text-lg">Digital Sanctuary</h1>
-    </div>
-    <div class="flex items-center gap-3">
-        <div class="text-right">
-            <p class="text-[#f2ca50] text-[10px] font-bold uppercase tracking-tighter">Noor AI</p>
-            <p class="text-[#cbead7] text-[8px] opacity-60">Spiritual Guide</p>
-        </div>
-        <div class="w-10 h-10 rounded-full border-2 border-[#f2ca50]/20 overflow-hidden">
-            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Noor" class="w-full h-full object-cover">
-        </div>
-    </div>
-</header>
-""", unsafe_allow_html=True)
-
-# --- MAIN CONTENT AREA ---
-content_container = st.container()
-
-with content_container:
-    # --- CHAT MODE ---
-    if st.session_state.app_mode == "Guide":
-        st.markdown("<main class='pt-24 pb-44 px-4 max-w-3xl mx-auto space-y-8'>", unsafe_allow_html=True)
+    dv_list = get_data(s_id, a_id)
+    if dv_list and dv_list[0]:
+        dv = dv_list[0]
+        text_ar = dv.get('text_uthmani', 'Arabic text unavailable')
+        trans_text = re.sub('<[^<]+?>', '', dv.get('translations', [{}])[0].get('text', ''))
         
-        for m in st.session_state.messages:
-            if m["role"] == "assistant":
-                st.markdown(f"""
-                <div class="flex flex-col items-start gap-2 max-w-[90%] mb-6">
-                    <div class="flex items-center gap-2 ml-2">
-                        <span class="w-2 h-2 rounded-full bg-[#f2ca50] animate-pulse"></span>
-                        <span class="text-[10px] font-bold text-[#f2ca50] tracking-widest uppercase">Noor</span>
-                    </div>
-                    <div class="message-gradient ai-border rounded-t-xl rounded-br-xl p-5 gold-glow">
-                        <p class="text-[#cbead7] text-sm leading-relaxed">{m['content']}</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="flex flex-col items-end gap-2 max-w-[85%] ml-auto mb-6">
-                    <div class="bg-[#1f3a2d] rounded-t-xl rounded-bl-xl p-5">
-                        <p class="text-[#cbead7] text-sm leading-relaxed">{m['content']}</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        # Chat Logic
-        prompt = st.chat_input("Speak your heart...")
-        if prompt:
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            if client:
-                res = client.chat.completions.create(
-                    model="llama-3.3-70b-specdec",
-                    messages=[{"role": "system", "content": "You are Noor, a spiritual guide. Be concise, empathetic, and use Islamic wisdom."}] + st.session_state.messages
-                )
-                st.session_state.messages.append({"role": "assistant", "content": res.choices[0].message.content})
-            st.rerun()
-
-    # --- QURAN MODE ---
-    elif st.session_state.app_mode == "Library":
-        st.markdown("<main class='pt-24 px-6 max-w-4xl mx-auto space-y-12'>", unsafe_allow_html=True)
-        
-        # Surah Header (Static for Al-Fatihah in this demo)
-        st.markdown("""
-        <section class="relative overflow-hidden rounded-lg p-8 bg-gradient-to-br from-[#142f23] to-[#042015] border-l-4 border-[#f2ca50]">
-            <div class="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-                <div>
-                    <span class="text-xs uppercase tracking-[0.2em] text-[#f2ca50]/80 mb-2 block">Now Reading</span>
-                    <h2 class="text-4xl font-extrabold text-[#cbead7]">Surah Al-Fatihah</h2>
-                    <p class="text-[#d0c5af] mt-2 text-sm italic">"The Opening" — 7 Ayahs</p>
-                </div>
-                <div class="text-right"><span class="arabic-font text-5xl text-[#f2ca50] block" dir="rtl">سُورَةُ ٱلْفَاتِحَةِ</span></div>
-            </div>
-        </section>
+        st.markdown(f"""
+        <div class="hero-box">
+            <small style="color: #d4af37;">Daily Verse • {datetime.now().strftime('%B %d')}</small>
+            <div class="arabic-txt">{text_ar}</div>
+            <div class="trans-txt">{trans_text}</div>
+            <p style='font-size: 12px; margin-top:5px; opacity:0.6;'>[Surah {todays_key}]</p>
+        </div>
         """, unsafe_allow_html=True)
 
-        # Ayahs (Fetching example)
+    # AI Chat
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]): st.markdown(m["content"])
+
+    prompt = st.chat_input("Ask DeenAI...")
+    audio_bytes = mic_recorder(start_prompt="🎤 Speak", stop_prompt="🛑 Stop", key='mic', just_once=True)
+
+    if prompt or audio_bytes:
+        u_input = prompt
+        if audio_bytes:
+            with open("temp.wav", "wb") as f: f.write(audio_bytes['bytes'])
+            with open("temp.wav", "rb") as af:
+                u_input = client.audio.transcriptions.create(model="whisper-large-v3", file=af).text
+        
+        st.session_state.messages.append({"role": "user", "content": u_input})
+        with st.chat_message("user"): st.markdown(u_input)
+
+        with st.chat_message("assistant"):
+            sys_p = "You are DeenAI, a devout Muslim companion. Answer strictly from Quran and Sahih Hadith. Cite [Surah:Ayah] and Hadith numbers."
+            res = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"system","content": sys_p}] + st.session_state.messages).choices[0].message.content
+            st.markdown(res)
+            audio_out = speak_gtts(res)
+            if audio_out: st.audio(audio_out, autoplay=True)
+            st.session_state.messages.append({"role": "assistant", "content": res})
+
+# --- QIBLA FINDER ---
+elif st.session_state.app_mode == "Qibla Finder":
+    st.subheader("🧭 Qibla Direction")
+    q_city = st.text_input("City for Qibla", st.session_state.user_city)
+    if q_city:
+        headers = {'User-Agent': 'DeenAI_App_v1.0'}
         try:
-            r = requests.get("https://api.quran.com/api/v4/verses/by_chapter/1?language=en&translations=131&fields=text_uthmani").json()
-            for i, v in enumerate(r['verses'][:5]):
-                st.markdown(f"""
-                <div class="group p-6 rounded-lg bg-[#042015] border border-[#f2ca50]/5 hover:bg-[#142f23] transition-all mb-4">
-                    <div class="flex items-start justify-between gap-8 mb-4">
-                        <div class="w-8 h-8 rounded-full border border-[#f2ca50]/30 flex items-center justify-center text-[#f2ca50] text-xs">{i+1}</div>
-                        <p class="arabic-font text-3xl text-[#cbead7] text-right w-full" dir="rtl">{v['text_uthmani']}</p>
-                    </div>
-                    <p class="text-sm text-[#cbead7]/80 pl-12">{v['translations'][0]['text']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-        except: st.error("Library connection lost.")
+            geo_res = requests.get(f"https://nominatim.openstreetmap.org/search?q={q_city}&format=json", headers=headers).json()
+            if geo_res:
+                lat, lon = geo_res[0]['lat'], geo_res[0]['lon']
+                q_data = requests.get(f"https://api.aladhan.com/v1/qibla/{lat}/{lon}").json()
+                deg = q_data['data']['direction']
+                st.markdown(f'<div class="qibla-circle"><h1>{round(deg)}°</h1></div>', unsafe_allow_html=True)
+                st.info(f"Qibla direction: {round(deg)}° from North.")
+        except: st.error("Location service error.")
 
-# --- NAVIGATION BAR (The engine that changes modes) ---
-# We use a trick: 4 invisible buttons over your HTML icons
-st.markdown("<div style='height: 120px;'></div>", unsafe_allow_html=True) # Space for nav
+# --- HADITH SEARCH ---
+elif st.session_state.app_mode == "Hadith Search":
+    st.subheader("📜 Hadith Library")
+    topic = st.text_input("Search Hadith by Topic (e.g. Fasting, Parents)")
+    if topic:
+        with st.spinner("Searching Sahihayn..."):
+            res = client.chat.completions.create(
+                messages=[{"role":"system","content":"Answer only using Sahih Bukhari and Sahih Muslim. Provide Hadith numbers."},{"role":"user","content":topic}],
+                model="llama-3.3-70b-versatile").choices[0].message.content
+            st.info(res)
 
-nav_html = """
-<nav class="fixed bottom-0 w-full rounded-t-[32px] z-50 bg-[#042015]/95 backdrop-blur-md flex justify-around items-center px-4 pb-6 pt-2 shadow-[0_-8px_40px_rgba(0,0,0,0.5)]">
-    <div id="btn-guide" class="flex flex-col items-center justify-center p-3 cursor-pointer">
-        <span class="material-symbols-outlined">forum</span>
-        <span class="text-[10px]">Guide</span>
-    </div>
-    <div id="btn-library" class="flex flex-col items-center justify-center p-3 cursor-pointer">
-        <span class="material-symbols-outlined">menu_book</span>
-        <span class="text-[10px]">Library</span>
-    </div>
-</nav>
-"""
-st.markdown(nav_html, unsafe_allow_html=True)
-
-# Streamlit Buttons (Placed at bottom for control)
-col1, col2 = st.columns(2)
-if col1.button("✨ Switch to Guide", use_container_width=True):
-    st.session_state.app_mode = "Guide"
-    st.rerun()
-if col2.button("📖 Open Library", use_container_width=True):
-    st.session_state.app_mode = "Library"
-    st.rerun()
-
-# Background Ornament
-st.markdown("""
-<div class="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden opacity-10">
-    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
-        <svg class="w-full h-full fill-[#f2ca50]" viewBox="0 0 100 100">
-            <path d="M50 0 L60 40 L100 50 L60 60 L50 100 L40 60 L0 50 L40 40 Z"></path>
-        </svg>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# --- QURAN READER ---
+elif st.session_state.app_mode == "Quran Reader":
+    s_choice = st.number_input("Surah", 1, 114, 1)
+    v_list = get_data(s_choice)
+    for v in v_list:
+        with st.container():
+            st.markdown(f'<div class="verse-card"><div class="arabic-txt">{v.get("text_uthmani", "")}</div>', unsafe_allow_html=True)
+            for trans in v.get('translations', []):
+                st.markdown(f'<div class="trans-txt">{re.sub("<[^<]+?>", "", trans.get("text", ""))}</div>', unsafe_allow_html=True)
+            st.audio(get_audio_url(v.get('verse_key', '')))
+            st.markdown('</div>', unsafe_allow_html=True)
