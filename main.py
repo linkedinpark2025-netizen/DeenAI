@@ -1,101 +1,115 @@
-import os, requests, re, streamlit as st, datetime, io
+import os, requests, re, streamlit as st, datetime
 from groq import Groq
 
-# ==========================================
-# 1. INITIALIZATION & SESSION STATE
-# ==========================================
-if 'app_mode' not in st.session_state: st.session_state.app_mode = "Home"
-if 'messages' not in st.session_state: st.session_state.messages = []
-if 'user_city' not in st.session_state: st.session_state.user_city = "London"
-if 'trans_lang' not in st.session_state: st.session_state.trans_lang = "131"
-
-G_KEY = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
-client = Groq(api_key=G_KEY) if G_KEY else None
-
-# ==========================================
-# 2. UTILITY FUNCTIONS (Defined before use)
-# ==========================================
-def get_prayer_times(city_name):
-    try:
-        url = f"https://api.aladhan.com/v1/timingsByCity?city={city_name}&country="
-        r = requests.get(url, timeout=10).json()
-        return r['data']['timings'] if r['code'] == 200 else None
-    except: return None
-
-def get_data(s_id, a_id=None):
-    u = f"https://api.quran.com/api/v4/verses/by_key/{s_id}:{a_id}" if a_id else f"https://api.quran.com/api/v4/verses/by_chapter/{s_id}"
-    p = {"translations": st.session_state.trans_lang, "fields": "text_uthmani", "per_page": 20}
-    try:
-        r = requests.get(u, params=p).json()
-        return [r.get('verse')] if a_id else r.get('verses', [])
-    except: return []
-
-# ==========================================
-# 3. PAGE CONFIG & STYLES
-# ==========================================
+# --- 1. CONFIG & STYLE (Your CSS Theme) ---
 st.set_page_config(page_title="The Digital Maqam", layout="wide")
 
+# This block translates your @theme CSS into the Streamlit app
 st.markdown("""
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Amiri&display=swap" rel="stylesheet"/>
 <style>
-    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
-    .stApp { background-color: #00180d; color: #cbead7; }
-    .gold-gradient { background: linear-gradient(135deg, #f2ca50 0%, #d4af37 100%); }
-    .arabic-font { font-family: 'Amiri', serif; }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&family=Inter:wght@400;600&family=Amiri:wght@400;700&display=swap');
+
+    /* Variables from your @theme */
+    :root {
+        --primary: #f2ca50;
+        --surface: #00180d;
+        --surface-container-low: #042015;
+        --surface-container-high: #142f23;
+        --on-surface-variant: #d0c5af;
+        --secondary: #dac58d;
+    }
+
+    .stApp { 
+        background-color: var(--surface); 
+        color: #cbead7; 
+        font-family: 'Inter', sans-serif; 
+    }
+
+    /* Verse Card - surface-container-low */
+    .verse-card {
+        background-color: var(--surface-container-low);
+        border: 1px solid rgba(242, 202, 80, 0.1);
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .arabic-font { 
+        font-family: 'Amiri', serif; 
+        color: var(--primary);
+        font-size: 2rem;
+        line-height: 1.8;
+        text-align: right;
+    }
+
+    /* Prayer Pills - surface-container-high */
+    .prayer-pill {
+        background-color: var(--surface-container-high);
+        border: 1px solid #4d4635;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        text-align: center;
+        min-width: 100px;
+    }
+
+    .gold-gradient {
+        background: linear-gradient(135deg, #f2ca50 0%, #d4af37 100%);
+        color: #3c2f00;
+    }
+
+    /* Hide Streamlit clutter */
+    [data-testid="stHeader"], footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 4. MAIN UI LOGIC
-# ==========================================
-if st.session_state.app_mode == "Home":
-    # Data Fetching
-    pt = get_prayer_times(st.session_state.user_city) or {"Dhuhr": "--:--", "Asr": "--:--", "Maghrib": "--:--"}
-    
-    # Verse of the Day Logic
-    day_of_year = datetime.date.today().timetuple().tm_yday
-    rotation_keys = ["2:255", "2:153", "3:139", "94:5", "2:186"]
-    todays_key = rotation_keys[day_of_year % len(rotation_keys)]
-    s_id, a_id = todays_key.split(':')
-    dv_list = get_data(s_id, a_id)
-    
-    text_ar = dv_list[0].get('text_uthmani', '') if dv_list else "Loading..."
-    trans_text = re.sub('<[^<]+?>', '', dv_list[0].get('translations', [{}])[0].get('text', '')) if dv_list else "Connecting..."
+# --- 2. LAYOUT CONSTRUCTION (The "App.tsx" structure) ---
 
-    # Render Dashboard
-    st.markdown(f"""
-    <main class="pt-10 px-6 max-w-2xl mx-auto space-y-8">
-        <section class="relative bg-[#042015] border border-[#f2ca50]/20 rounded-lg p-8 overflow-hidden">
-            <div class="space-y-6">
-                <div class="flex justify-between items-center">
-                    <span class="bg-[#f2ca50]/10 text-[#f2ca50] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">Verse of the Day</span>
-                    <span class="text-[#d0c5af] text-xs">Surah {todays_key}</span>
-                </div>
-                <p class="arabic-font text-right text-3xl leading-[1.8] text-[#f2ca50]" dir="rtl">{text_ar}</p>
-                <p class="text-[#d0c5af] italic text-sm leading-relaxed">"{trans_text}"</p>
-            </div>
-        </section>
+# Top Header
+st.markdown(f"""
+<div style="padding: 1rem 0; margin-bottom: 2rem;">
+    <p style="color:var(--secondary); text-transform:uppercase; letter-spacing:0.2em; font-size:0.7rem; font-weight:700;">Assalamu Alaikum</p>
+    <h1 style="font-family:'Plus Jakarta Sans'; font-weight:800; font-size:2.5rem; color:#cbead7; letter-spacing:-0.02em;">Digital Sanctuary</h1>
+</div>
+""", unsafe_allow_html=True)
 
-        <h3 class="text-sm font-bold text-[#cbead7] tracking-wider uppercase">Prayer Times</h3>
-        <div class="grid grid-cols-3 gap-3">
-            <div class="gold-gradient text-[#3c2f00] p-4 rounded-lg text-center shadow-lg">
-                <p class="text-[10px] font-bold uppercase">Dhuhr</p>
-                <p class="text-lg font-extrabold">{pt['Dhuhr']}</p>
-            </div>
-            <div class="bg-[#142f23] p-4 rounded-lg text-center border border-[#4d4635]">
-                <p class="text-[10px] font-bold uppercase">Asr</p>
-                <p class="text-lg font-extrabold">{pt['Asr']}</p>
-            </div>
-            <div class="bg-[#142f23] p-4 rounded-lg text-center border border-[#4d4635]">
-                <p class="text-[10px] font-bold uppercase">Maghrib</p>
-                <p class="text-lg font-extrabold">{pt['Maghrib']}</p>
-            </div>
-        </div>
-    </main>
-    """, unsafe_allow_html=True)
+# Main Verse Card
+st.markdown(f"""
+<div class="verse-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <span style="background:rgba(242,202,80,0.1); color:var(--primary); padding:4px 12px; border-radius:99px; font-size:0.6rem; font-weight:bold; letter-spacing:0.1em;">VERSE OF THE DAY</span>
+        <span style="color:var(--on-surface-variant); font-size:0.7rem;">Surah Al-Baqarah 2:255</span>
+    </div>
+    <p class="arabic-font" dir="rtl">اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ</p>
+    <p style="color:var(--on-surface-variant); font-style:italic; font-size:0.9rem; margin-top:1.5rem; line-height:1.6;">
+        "Allah! There is no god but He, the Living, the Self-subsisting..."
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-# Navigation (Simple)
-st.sidebar.title("Navigation")
-if st.sidebar.button("Home"): st.session_state.app_mode = "Home"; st.rerun()
+# Prayer Times Grid
+st.markdown('<p style="font-size:0.75rem; font-weight:bold; color:#cbead7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Prayer Times</p>', unsafe_allow_html=True)
+
+# Using a Flex Container for the Horizontal Scroll look
+st.markdown(f"""
+<div style="display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 1rem;">
+    <div class="prayer-pill gold-gradient">
+        <p style="font-size:0.6rem; font-weight:bold; text-transform:uppercase; margin:0;">Dhuhr</p>
+        <p style="font-size:1.1rem; font-weight:800; margin:0;">12:58</p>
+    </div>
+    <div class="prayer-pill">
+        <p style="font-size:0.6rem; font-weight:bold; text-transform:uppercase; margin:0; color:var(--on-surface-variant);">Asr</p>
+        <p style="font-size:1.1rem; font-weight:800; margin:0;">15:22</p>
+    </div>
+    <div class="prayer-pill">
+        <p style="font-size:0.6rem; font-weight:bold; text-transform:uppercase; margin:0; color:var(--on-surface-variant);">Maghrib</p>
+        <p style="font-size:1.1rem; font-weight:800; margin:0;">18:05</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Chat Input Placeholder (Styling the Groq input)
+st.markdown('<div style="margin-top:3rem;"></div>', unsafe_allow_html=True)
+st.markdown('<p style="font-size:0.75rem; font-weight:bold; color:#cbead7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Spiritual Guidance</p>', unsafe_allow_html=True)
+
+# Your Groq logic would follow here...
+prompt = st.chat_input("Ask Noor...")
